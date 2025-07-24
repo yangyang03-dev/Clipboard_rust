@@ -1,0 +1,39 @@
+name: Deploy Rust Backend
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Build backend binary
+      run: cargo build --release
+
+    - name: Copy binary to server via scp
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+
+        scp -o StrictHostKeyChecking=no \
+            target/release/clipboard-backend \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_PATH }}/clipboard-backend
+
+    - name: Restart systemd service via ssh
+      run: |
+        ssh -o StrictHostKeyChecking=no \
+            -i ~/.ssh/id_ed25519 \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            'sudo systemctl restart clipboard-backend'
