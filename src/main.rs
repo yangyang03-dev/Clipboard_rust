@@ -1,36 +1,48 @@
-mod models;
-mod routes;
-
-use axum::{Router, routing::get};
-use tower_http::cors::{CorsLayer, Any};
-use axum::http::Method;
-use std::net::SocketAddr;
-use routes::message::{message_routes, MessageStore};
-use std::sync::{Arc, Mutex};
-use routes::taglist::{taglist_routes, TagListStore};
-use routes::file::{file_routes, FileStore};
+use axum::{
+    Router,
+    http::StatusCode,
+};
+use dotenv::dotenv;
 use sqlx::postgres::PgPoolOptions;
-use axum::Router;
+use std::net::SocketAddr;
+
+mod routes;
+mod models;
+
+use routes::taglist::taglist_routes;
+use tower_http::cors::{CorsLayer, Any};
+use axum::Server;
+
 #[tokio::main]
-async fn main() {
-    let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load environment variables from `.env` if running locally
+    dotenv().ok();
+
+    // Connect to the PostgreSQL database
+    let db_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set in the environment");
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
         .await
-        .expect("DB connect failed");
+        .expect("Failed to connect to database");
 
+    // CORS config (allow all origins)
+    let cors = CorsLayer::new().allow_origin(Any);
+
+    // Compose the application routes
     let app = Router::new()
-        .route("/taglists", get(get_all_taglists))
-        .with_state(pool);
+        .merge(taglist_routes(pool.clone()))
+        .layer(cors);
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    // Start the Axum server
+    let addr: SocketAddr = "0.0.0.0:3000".parse()?;
+    println!("🚀 Running at http://{addr}");
+
+    Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
-}
+        .await?;
 
-async fn root_handler() -> &'static str {
-    "Welcome to the Clipboard API!"
+    Ok(())
 }
