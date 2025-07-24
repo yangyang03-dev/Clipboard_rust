@@ -9,27 +9,24 @@ use routes::message::{message_routes, MessageStore};
 use std::sync::{Arc, Mutex};
 use routes::taglist::{taglist_routes, TagListStore};
 use routes::file::{file_routes, FileStore};
+use sqlx::postgres::PgPoolOptions;
+use axum::Router;
 #[tokio::main]
 async fn main() {
-    let message_store: MessageStore = Arc::new(Mutex::new(Vec::new()));
-    let taglist_store: TagListStore = Arc::new(Mutex::new(Vec::new()));
-    let file_store: FileStore = Arc::new(Mutex::new(Vec::new()));
+    let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
+
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&db_url)
+        .await
+        .expect("DB connect failed");
+
     let app = Router::new()
-     .merge(message_routes(message_store.clone()))
-     .merge(taglist_routes(taglist_store.clone()))
-     .merge(file_routes(file_store.clone()))
-     .route("/", get(root_handler))
-     .layer(
-        CorsLayer::new()
-            .allow_origin(Any) // OR .allow_origin("http://localhost:9000".parse().unwrap())
-            .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::PUT, Method::DELETE])
-            .allow_headers(Any),
-    );
+        .route("/taglists", get(get_all_taglists))
+        .with_state(pool);
 
-   let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    println!("🚀 Running at http://{}", addr);
-
-    axum::serve(tokio::net::TcpListener::bind(addr).await.unwrap(), app)
+    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+        .serve(app.into_make_service())
         .await
         .unwrap();
 }
