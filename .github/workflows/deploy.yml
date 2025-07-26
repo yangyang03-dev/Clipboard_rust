@@ -19,7 +19,9 @@ jobs:
         override: true
 
     - name: Build backend binary
-      run: cargo build --release
+      run: cargo sqlx prepare
+           cargo build --release
+      
 
     - name: Copy binary to server via scp
       run: |
