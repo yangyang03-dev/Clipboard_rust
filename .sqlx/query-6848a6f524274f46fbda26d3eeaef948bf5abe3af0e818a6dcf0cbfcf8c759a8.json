@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM tag_items WHERE id = $1 AND taglist_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6848a6f524274f46fbda26d3eeaef948bf5abe3af0e818a6dcf0cbfcf8c759a8"
+}
