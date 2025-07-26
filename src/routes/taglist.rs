@@ -1,14 +1,19 @@
 use axum::{
     extract::{Path, State},
-    routing::{get, post, put, patch, delete},
+    routing::{get, patch, delete},
     Json, Router,
-    http::StatusCode
+    http::StatusCode,
+    debug_handler,
 };
-
+use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::taglist::{TagList, TagItem};
+use crate::models::taglist::{TagList, TagItem,NewTagItem};
+
+fn internal_error<E: std::fmt::Display>(err: E) -> (StatusCode, String) {
+    (StatusCode::INTERNAL_SERVER_ERROR, format!("Internal server error: {}", err))
+}
 
 pub fn taglist_routes(pool: PgPool) -> Router {
     Router::new()
@@ -31,7 +36,16 @@ async fn get_all_taglists(State(pool): State<PgPool>) -> Result<Json<Vec<TagList
     Ok(Json(taglists))
 }
 
-async fn create_taglist(State(pool): State<PgPool>, Json(input): Json<TagList>) -> Result<(StatusCode, Json<TagList>), StatusCode> {
+#[derive(Deserialize)]
+pub struct CreateTagList {
+    pub name: String,
+}
+
+#[debug_handler]
+async fn create_taglist(
+    State(pool): State<PgPool>,
+    Json(input): Json<CreateTagList>,
+) -> Result<(StatusCode, Json<TagList>), (StatusCode, String)> {
     let id = Uuid::new_v4();
     let taglist = sqlx::query_as!(
         TagList,
@@ -41,7 +55,7 @@ async fn create_taglist(State(pool): State<PgPool>, Json(input): Json<TagList>) 
     )
     .fetch_one(&pool)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(internal_error)?;
 
     Ok((StatusCode::CREATED, Json(taglist)))
 }
@@ -59,7 +73,11 @@ async fn get_taglist(Path(id): Path<Uuid>, State(pool): State<PgPool>) -> Result
     taglist.map(Json).ok_or(StatusCode::NOT_FOUND)
 }
 
-async fn update_taglist(Path(id): Path<Uuid>, State(pool): State<PgPool>, Json(updated): Json<TagList>) -> Result<StatusCode, StatusCode> {
+async fn update_taglist(
+    Path(id): Path<Uuid>,
+    State(pool): State<PgPool>,
+    Json(updated): Json<TagList>,
+) -> Result<StatusCode, StatusCode> {
     let result = sqlx::query!(
         "UPDATE taglists SET name = $1 WHERE id = $2",
         updated.name,
@@ -77,7 +95,6 @@ async fn update_taglist(Path(id): Path<Uuid>, State(pool): State<PgPool>, Json(u
 }
 
 async fn delete_taglist(Path(id): Path<Uuid>, State(pool): State<PgPool>) -> Result<StatusCode, StatusCode> {
-    // Delete associated items first
     sqlx::query!("DELETE FROM tag_items WHERE taglist_id = $1", id)
         .execute(&pool)
         .await
@@ -95,7 +112,11 @@ async fn delete_taglist(Path(id): Path<Uuid>, State(pool): State<PgPool>) -> Res
     }
 }
 
-async fn add_items(Path(id): Path<Uuid>, State(pool): State<PgPool>, Json(items): Json<Vec<TagItem>>) -> Result<StatusCode, StatusCode> {
+async fn add_items(
+    Path(id): Path<Uuid>,
+    State(pool): State<PgPool>,
+    Json(items): Json<Vec<NewTagItem>>,  // 👈 changed here
+) -> Result<StatusCode, StatusCode> {
     for item in items {
         sqlx::query!(
             "INSERT INTO tag_items (id, taglist_id, tag, remark) VALUES ($1, $2, $3, $4)",

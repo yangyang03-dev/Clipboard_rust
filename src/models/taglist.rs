@@ -15,3 +15,8 @@ pub struct TagItem {
     pub tag: String,
     pub remark: Option<String>,
 }
+#[derive(Deserialize)]
+pub struct NewTagItem {
+    pub tag: String,
+    pub remark: Option<String>,
+}
