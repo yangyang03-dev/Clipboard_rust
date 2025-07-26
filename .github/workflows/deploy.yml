@@ -11,69 +11,29 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      with:
-        # 确保包含 sqlx-data.json
-        fetch-depth: 0
 
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
         override: true
-        components: rustfmt, clippy
-
-    - name: Install SQLx CLI
-      run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
-
-    - name: Verify SQLx cache
-      run: cargo sqlx prepare --check
 
     - name: Build backend binary
-      env:
-        # 启用 SQLx 离线模式
-        SQLX_OFFLINE: true
-      run: |
-        cargo build --release
-        strip target/release/clipboard-backend || true
+      run: 
+           cargo build --release
+      
 
-    - name: Setup SSH
+    - name: Copy binary to server via scp
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
         chmod 600 ~/.ssh/id_ed25519
-        echo "${{ secrets.SSH_HOST }} ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkm5AMrtJ1oteyCc0CETqDKv/6eYQ6R1saS+Z3ov3iBXd5dXOgKNfK1c1V0=" >> ~/.ssh/known_hosts
-
-    - name: Create remote directory
-      run: |
-        ssh -i ~/.ssh/id_ed25519 \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "mkdir -p ${{ secrets.SSH_PATH }}"
-
-    - name: Copy binary to server
-      run: |
-        scp -i ~/.ssh/id_ed25519 \
+        scp -o StrictHostKeyChecking=no \
             target/release/clipboard-backend \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_PATH }}/clipboard-backend-temp
-        
-        # 原子替换旧二进制
-        ssh -i ~/.ssh/id_ed25519 \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "mv ${{ secrets.SSH_PATH }}/clipboard-backend-temp ${{ secrets.SSH_PATH }}/clipboard-backend"
-
-    - name: Set executable permission
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_PATH }}/clipboard-backend
+    - name: Restart systemd service via ssh
       run: |
-        ssh -i ~/.ssh/id_ed25519 \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "chmod +x ${{ secrets.SSH_PATH }}/clipboard-backend"
-
-    - name: Restart systemd service
-      run: |
-        ssh -i ~/.ssh/id_ed25519 \
+        ssh -o StrictHostKeyChecking=no \
+            -i ~/.ssh/id_ed25519 \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             'sudo systemctl restart clipboard-backend'
-
-    - name: Verify service status
-      run: |
-        ssh -i ~/.ssh/id_ed25519 \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            'sudo systemctl status clipboard-backend --no-pager'
